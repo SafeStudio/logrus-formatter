@@ -3,20 +3,35 @@ package formatter
 import (
 	"bytes"
 	"fmt"
-	"runtime"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	FieldTime           = "time"
+	FieldLevel          = "level"
+	FieldCalledFile     = "called_file"
+	FieldCalledFunction = "called_function"
+	FieldMessage        = "message"
+)
+
 // Formatter - logrus formatter, implements logrus.Formatter
 type Formatter struct {
-	// FieldsOrder - default: fields sorted alphabetically
+	/**
+	FieldsOrder
+	Default:
+	- time
+	- level
+	- called_file (if report caller was enabled)
+	- called_function (if report caller was enabled)
+	- other fields (sorted alphabetically)
+	- message
+	*/
 	FieldsOrder []string
 
-	// TimestampFormat - default: time.StampMilli = "Jan _2 15:04:05.000"
+	// TimestampFormat - default: "2006-01-02 15:04:05.000"
 	TimestampFormat string
 
 	// HideKeys - show [fieldValue] instead of [fieldKey:fieldValue]
@@ -37,87 +52,33 @@ type Formatter struct {
 	// NoUppercaseLevel - no upper case for level value
 	NoUppercaseLevel bool
 
-	// TrimMessages - trim whitespaces on messages
+	// TrimMessages - trim white spaces on messages
 	TrimMessages bool
-
-	// CallerFirst - print caller info first
-	CallerFirst bool
-
-	// CustomCallerFormatter - set custom formatter for caller info
-	CustomCallerFormatter func(*runtime.Frame) string
 }
 
 // Format an log entry
 func (f *Formatter) Format(entry *logrus.Entry) ([]byte, error) {
-	levelColor := getColorByLevel(entry.Level)
+	if f.FieldsOrder == nil {
+		f.FieldsOrder = []string{
+			FieldTime,
+			FieldLevel,
+		}
 
-	timestampFormat := f.TimestampFormat
-	if timestampFormat == "" {
-		timestampFormat = time.StampMilli
+		if entry.HasCaller() {
+			f.FieldsOrder = append(f.FieldsOrder, FieldCalledFile, FieldCalledFunction)
+		}
+
+		f.FieldsOrder = append(f.FieldsOrder, FieldMessage)
 	}
 
 	// output buffer
 	b := &bytes.Buffer{}
 
-	// write time
-	b.WriteString(entry.Time.Format(timestampFormat))
-
-	// write level
-	var level string
-	if f.NoUppercaseLevel {
-		level = entry.Level.String()
-	} else {
-		level = strings.ToUpper(entry.Level.String())
-	}
-
-	if f.CallerFirst {
-		f.writeCaller(b, entry)
-	}
-
-	if !f.NoColors {
-		fmt.Fprintf(b, "\x1b[%dm", levelColor)
-	}
-
-	b.WriteString(" [")
-	if f.ShowFullLevel {
-		b.WriteString(level)
-	} else {
-		b.WriteString(level[:4])
-	}
-	b.WriteString("]")
-
-	if !f.NoFieldsSpace {
-		b.WriteString(" ")
-	}
-
-	if !f.NoColors && f.NoFieldsColors {
-		b.WriteString("\x1b[0m")
-	}
-
 	// write fields
-	if f.FieldsOrder == nil {
-		f.writeFields(b, entry)
-	} else {
-		f.writeOrderedFields(b, entry)
-	}
-
-	if f.NoFieldsSpace {
-		b.WriteString(" ")
-	}
+	f.writeOrderedFields(b, entry)
 
 	if !f.NoColors && !f.NoFieldsColors {
 		b.WriteString("\x1b[0m")
-	}
-
-	// write message
-	if f.TrimMessages {
-		b.WriteString(strings.TrimSpace(entry.Message))
-	} else {
-		b.WriteString(entry.Message)
-	}
-
-	if !f.CallerFirst {
-		f.writeCaller(b, entry)
 	}
 
 	b.WriteByte('\n')
@@ -125,74 +86,115 @@ func (f *Formatter) Format(entry *logrus.Entry) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func (f *Formatter) writeCaller(b *bytes.Buffer, entry *logrus.Entry) {
-	if entry.HasCaller() {
-		if f.CustomCallerFormatter != nil {
-			fmt.Fprintf(b, f.CustomCallerFormatter(entry.Caller))
-		} else {
-			fmt.Fprintf(
-				b,
-				" (%s:%d %s)",
-				entry.Caller.File,
-				entry.Caller.Line,
-				entry.Caller.Function,
-			)
-		}
-	}
-}
-
-func (f *Formatter) writeFields(b *bytes.Buffer, entry *logrus.Entry) {
-	if len(entry.Data) != 0 {
-		fields := make([]string, 0, len(entry.Data))
-		for field := range entry.Data {
-			fields = append(fields, field)
-		}
-
-		sort.Strings(fields)
-
-		for _, field := range fields {
-			f.writeField(b, entry, field)
-		}
-	}
-}
-
 func (f *Formatter) writeOrderedFields(b *bytes.Buffer, entry *logrus.Entry) {
-	length := len(entry.Data)
+	defaultFields := f.getDefaultFields(entry)
+
+	length := len(defaultFields) + len(entry.Data)
 	foundFieldsMap := map[string]bool{}
 	for _, field := range f.FieldsOrder {
 		if _, ok := entry.Data[field]; ok {
 			foundFieldsMap[field] = true
 			length--
-			f.writeField(b, entry, field)
+			f.writeField(b, entry.Data, field, false, true)
+		} else if _, ok := defaultFields[field]; ok {
+			foundFieldsMap[field] = true
+			length--
+			f.writeField(b, defaultFields, field, false, false)
 		}
 	}
 
 	if length > 0 {
 		notFoundFields := make([]string, 0, length)
 		for field := range entry.Data {
-			if foundFieldsMap[field] == false {
+			if !foundFieldsMap[field] {
 				notFoundFields = append(notFoundFields, field)
 			}
 		}
 
 		sort.Strings(notFoundFields)
 
-		for _, field := range notFoundFields {
-			f.writeField(b, entry, field)
+		for i, field := range notFoundFields {
+			f.writeField(b, entry.Data, field, i == 0, true)
 		}
 	}
 }
 
-func (f *Formatter) writeField(b *bytes.Buffer, entry *logrus.Entry, field string) {
-	if f.HideKeys {
-		fmt.Fprintf(b, "[%v]", entry.Data[field])
-	} else {
-		fmt.Fprintf(b, "[%s:%v]", field, entry.Data[field])
+func (f *Formatter) writeField(b *bytes.Buffer, fields logrus.Fields, field string, firstNotFoundField, brackets bool) {
+	prefix := ""
+	if brackets {
+		prefix += "["
 	}
 
-	if !f.NoFieldsSpace {
+	suffix := ""
+	if brackets {
+		suffix += "]"
+	}
+
+	if !f.NoFieldsSpace && firstNotFoundField {
 		b.WriteString(" ")
 	}
+
+	if f.HideKeys {
+		fmt.Fprintf(b, "%s%v%s", prefix, fields[field], suffix)
+	} else {
+		fmt.Fprintf(b, "%s%s:%v%s", prefix, field, fields[field], suffix)
+	}
+
+	l := len(f.FieldsOrder)
+	if !f.NoFieldsSpace && field != f.FieldsOrder[l-1] {
+		b.WriteString(" ")
+	}
+}
+
+func (f *Formatter) getDefaultFields(entry *logrus.Entry) logrus.Fields {
+	defaultFields := logrus.Fields{}
+
+	timestampFormat := f.TimestampFormat
+	if timestampFormat == "" {
+		timestampFormat = "2006-01-02 15:04:05.000"
+	}
+	defaultFields[FieldTime] = entry.Time.Format(timestampFormat)
+
+	var level string
+	if f.NoUppercaseLevel {
+		level = entry.Level.String()
+	} else {
+		level = strings.ToUpper(entry.Level.String())
+	}
+
+	if !f.ShowFullLevel {
+		level = level[:4]
+	}
+
+	var levelString string
+	if f.NoColors {
+		levelString = fmt.Sprintf("[%s]", level)
+	} else {
+		levelColor := getColorByLevel(entry.Level)
+		levelString = fmt.Sprintf("\x1b[%dm[%s]", levelColor, level)
+	}
+
+	if !f.NoColors && f.NoFieldsColors {
+		levelString += "\x1b[0m"
+	}
+	defaultFields[FieldLevel] = levelString
+
+	if entry.HasCaller() {
+		caller := entry.Caller
+		s := strings.Split(caller.Function, ".")
+		defaultFields[FieldCalledFile] = fmt.Sprintf("%s:%d", caller.File, caller.Line)
+		defaultFields[FieldCalledFunction] = s[len(s)-1]
+	}
+
+	var message string
+	if f.TrimMessages {
+		message = strings.TrimSpace(entry.Message)
+	} else {
+		message = entry.Message
+	}
+	defaultFields[FieldMessage] = message
+
+	return defaultFields
 }
 
 const (

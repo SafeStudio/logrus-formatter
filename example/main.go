@@ -2,16 +2,16 @@ package main
 
 import (
 	"fmt"
-	"github.com/antonfisher/nested-logrus-formatter"
+	"github.com/SafeStudio/logrus-formatter"
 	"github.com/sirupsen/logrus"
 )
 
 func main() {
-	fmt.Print("\n--- nested-logrus-formatter ---\n\n")
+	fmt.Print("\n--- safestudio-logrus-formatter ---\n")
 	printDemo(&formatter.Formatter{
 		HideKeys:    true,
-		FieldsOrder: []string{"component", "category", "req"},
-	}, "nested-logrus-formatter")
+		FieldsOrder: []string{"time", "level", "called_file", "called_function", "component", "category", "req", "message"},
+	}, "safestudio-logrus-formatter")
 
 	fmt.Print("\n--- default logrus formatter ---\n\n")
 	printDemo(nil, "default logrus formatter")

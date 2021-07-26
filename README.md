@@ -1,21 +1,28 @@
-# nested-logrus-formatter
+# logrus-formatter
 
-[![Build Status](https://travis-ci.org/antonfisher/nested-logrus-formatter.svg?branch=master)](https://travis-ci.org/antonfisher/nested-logrus-formatter)
-[![Go Report Card](https://goreportcard.com/badge/github.com/antonfisher/nested-logrus-formatter)](https://goreportcard.com/report/github.com/antonfisher/nested-logrus-formatter)
-[![GoDoc](https://godoc.org/github.com/antonfisher/nested-logrus-formatter?status.svg)](https://godoc.org/github.com/antonfisher/nested-logrus-formatter)
+Forked from [antonfisher/nested-logrus-formatter](https://github.com/antonfisher/nested-logrus-formatter)
 
 Human-readable log formatter, converts _logrus_ fields to a nested structure:
 
-![Screenshot](https://raw.githubusercontent.com/antonfisher/nested-logrus-formatter/docs/images/demo.png)
+![Screenshot](demo.png)
 
 ## Configuration:
 
 ```go
 type Formatter struct {
-	// FieldsOrder - default: fields sorted alphabetically
+	/**
+	FieldsOrder
+	Default:
+	- time
+	- level
+	- called_file (if report caller was enabled)
+	- called_function (if report caller was enabled)
+	- other fields (sorted alphabetically)
+	- message
+	*/
 	FieldsOrder []string
 
-	// TimestampFormat - default: time.StampMilli = "Jan _2 15:04:05.000"
+	// TimestampFormat - default: "2006-01-02 15:04:05.000"
 	TimestampFormat string
 
 	// HideKeys - show [fieldValue] instead of [fieldKey:fieldValue]
@@ -36,14 +43,8 @@ type Formatter struct {
 	// NoUppercaseLevel - no upper case for level value
 	NoUppercaseLevel bool
 
-	// TrimMessages - trim whitespaces on messages
+	// TrimMessages - trim white spaces on messages
 	TrimMessages bool
-
-	// CallerFirst - print caller info first
-	CallerFirst bool
-
-	// CustomCallerFormatter - set custom formatter for caller info
-	CustomCallerFormatter func(*runtime.Frame) string
 }
 ```
 
@@ -51,7 +52,7 @@ type Formatter struct {
 
 ```go
 import (
-	nested "github.com/antonfisher/nested-logrus-formatter"
+	nested "github.com/SafeStudio/logrus-formatter"
 	"github.com/sirupsen/logrus"
 )
 
@@ -62,13 +63,13 @@ log.SetFormatter(&nested.Formatter{
 })
 
 log.Info("just info message")
-// Output: Jan _2 15:04:05.000 [INFO] just info message
+// Output: 2006-01-02 15:04:05.000 [INFO] just info message
 
 log.WithField("component", "rest").Warn("warn message")
-// Output: Jan _2 15:04:05.000 [WARN] [rest] warn message
+// Output: 2006-01-02 15:04:05.000 [WARN] [rest] warn message
 ```
 
-See more examples in the [tests](./tests/formatter_test.go) file.
+See more examples in the [formatter_test.go](./formatter_test.go) file.
 
 ## Development
 
