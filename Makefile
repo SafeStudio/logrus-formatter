@@ -1,15 +1,25 @@
 # nested-logrus-formatter
 
-.PHONY: all
+
 all: test demo
 
-.PHONY: test
-test:
-	go test . -v -count 1
+prepare:
+	@echo "Installing golangci-lint"
+	curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s latest
 
-cover:
+lint:
+	@golangci-lint run ./...
+
+dependency:
+	@go get -v ./...
+
+test: dependency
+	@go test ./...
+
+coverage: dependency
 	go test . -v -covermode=count -coverprofile=coverage.out
 
-.PHONY: demo
 demo:
 	go run example/main.go
+
+.PHONY: all prepare test coverage demo
