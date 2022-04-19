@@ -14,3 +14,6 @@
 # IDE
 *.code-workspace
 .idea/
+.vscode/
+
+bin/
